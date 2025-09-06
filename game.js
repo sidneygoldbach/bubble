@@ -16,6 +16,10 @@ class BubbleGame {
         this.bubbleSpawnRate = 2000; // milliseconds
         this.maxBubbles = 15;
         
+        // Sistema de alfinetes no teto
+        this.ceilingPins = [];
+        this.ceilingHeight = 30; // altura do teto em pixels
+        
         // Cores das bolhas com valores estratégicos
         this.bubbleColors = [
             { color: '#FF6B6B', points: 10, name: 'vermelho' },
@@ -44,11 +48,32 @@ class BubbleGame {
         this.createAudioContext();
         this.gameLoop();
         
-        // Spawn inicial de bolhas
-        for (let i = 0; i < 5; i++) {
-            this.spawnBubble();
+        // Só spawn bolhas se o jogo foi iniciado
+        if (gameStarted) {
+            for (let i = 0; i < 5; i++) {
+                this.spawnBubble();
+            }
         }
     }
+    
+    createCeilingPin(x, color) {
+        // Cria um mini alfinete no teto
+        const pin = {
+            x: x,
+            y: this.ceilingHeight - 5,
+            color: color,
+            size: 3, // tamanho pequeno em pixels
+            createdAt: Date.now(),
+            fadeOut: false
+        };
+        
+        this.ceilingPins.push(pin);
+        
+        // Limita o número de alfinetes para não sobrecarregar
+         if (this.ceilingPins.length > 50) {
+             this.ceilingPins.shift(); // remove o mais antigo
+         }
+     }
     
     createAudioContext() {
         // Criar contexto de áudio para efeitos sonoros
@@ -139,10 +164,15 @@ class BubbleGame {
             bubble.wobble += bubble.wobbleSpeed;
             bubble.x += Math.sin(bubble.wobble) * 0.5;
             
-            // Remove bolhas que saíram da tela
-            if (bubble.y + bubble.radius < 0) {
+            // Verifica se a bolha bateu no teto
+            if (bubble.y - bubble.radius <= this.ceilingHeight) {
+                // Cria um alfinete no local onde a bolha bateu
+                this.createCeilingPin(bubble.x, bubble.color);
+                
+                // Remove a bolha
                 this.bubbles.splice(i, 1);
-                // Penalidade por deixar bolha escapar
+                
+                // Penalidade por deixar bolha bater no teto
                 this.score = Math.max(0, this.score - 5);
                 this.updateUI();
             }
@@ -275,6 +305,26 @@ class BubbleGame {
         // Limpar canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
+        // Desenhar teto
+        this.ctx.fillStyle = 'rgba(100, 100, 100, 0.8)';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.ceilingHeight);
+        
+        // Desenhar alfinetes no teto
+        this.ceilingPins.forEach(pin => {
+            this.ctx.fillStyle = pin.color;
+            this.ctx.beginPath();
+            this.ctx.arc(pin.x, pin.y, pin.size, 0, Math.PI * 2);
+            this.ctx.fill();
+            
+            // Desenhar a "agulha" do alfinete
+            this.ctx.strokeStyle = '#333';
+            this.ctx.lineWidth = 1;
+            this.ctx.beginPath();
+            this.ctx.moveTo(pin.x, pin.y);
+            this.ctx.lineTo(pin.x, pin.y - 8);
+            this.ctx.stroke();
+        });
+        
         // Desenhar fundo com gradiente animado
         const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
         gradient.addColorStop(0, `hsla(${Date.now() * 0.01 % 360}, 20%, 10%, 0.1)`);
@@ -359,10 +409,11 @@ class BubbleGame {
     
     restart() {
         this.bubbles = [];
+        this.ceilingPins = []; // Limpar alfinetes do teto
         this.score = 0;
         this.level = 1;
         this.gameRunning = true;
-        this.lastBubbleSpawn = 0;
+        this.lastBubbleSpawn = Date.now();
         this.bubbleSpawnRate = 2000;
         this.maxBubbles = 15;
         
@@ -378,10 +429,41 @@ class BubbleGame {
 
 // Inicializar o jogo
 let game;
+let gameStarted = false;
 
 window.addEventListener('load', () => {
-    game = new BubbleGame();
+    // Não inicializar o jogo automaticamente
+    showStartScreen();
 });
+
+function showStartScreen() {
+    document.getElementById('startScreen').style.display = 'flex';
+    document.getElementById('gameArea').style.display = 'none';
+    gameStarted = false;
+    
+    // Parar o jogo se estiver rodando
+    if (game) {
+        game.gameRunning = false;
+    }
+}
+
+function startGame() {
+    document.getElementById('startScreen').style.display = 'none';
+    document.getElementById('gameArea').style.display = 'block';
+    
+    // Inicializar ou reiniciar o jogo
+    if (!game) {
+        game = new BubbleGame();
+    } else {
+        game.restart();
+    }
+    
+    gameStarted = true;
+}
+
+function goToHome() {
+    showStartScreen();
+}
 
 function restartGame() {
     if (game) {
