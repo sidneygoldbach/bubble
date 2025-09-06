@@ -13,7 +13,7 @@ class BubbleGame {
         this.level = 1;
         this.gameRunning = true;
         this.lastBubbleSpawn = 0;
-        this.bubbleSpawnRate = 2000; // milliseconds
+        this.bubbleSpawnRate = 1200; // milliseconds
         this.maxBubbles = 15;
         
         // Sistema de alfinetes no teto
@@ -450,7 +450,7 @@ class BubbleGame {
         const newLevel = Math.floor(this.score / 500) + 1;
         if (newLevel > this.level) {
             this.level = newLevel;
-            this.bubbleSpawnRate = Math.max(800, 2000 - (this.level * 150));
+            this.bubbleSpawnRate = Math.max(600, 1200 - (this.level * 100));
             this.maxBubbles = Math.min(25, 15 + this.level);
             
             // Som de level up
@@ -679,7 +679,7 @@ class BubbleGame {
         this.level = 1;
         this.gameRunning = true;
         this.lastBubbleSpawn = Date.now();
-        this.bubbleSpawnRate = 2000;
+        this.bubbleSpawnRate = 1200;
         this.maxBubbles = 15;
         
         this.gameOverElement.style.display = 'none';
