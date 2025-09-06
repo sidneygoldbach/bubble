@@ -39,7 +39,24 @@ class BubbleGame {
             { radius: 65, multiplier: 0.5, name: 'extra grande' }
         ];
         
-        this.init();
+        // Sistema de power-ups
+        this.powerUps = {
+            slowMotion: {
+                active: false,
+                duration: 5000, // 5 segundos
+                endTime: 0,
+                speedMultiplier: 0.3 // 30% da velocidade normal
+            }
+        };
+        
+        // Tipos de bolhas especiais
+        this.specialBubbleTypes = {
+            NORMAL: 'normal',
+            TURTLE: 'turtle',
+            BOMB: 'bomb'
+        };
+        
+        this.init()
     }
     
     init() {
@@ -168,6 +185,15 @@ class BubbleGame {
         const colorData = this.bubbleColors[Math.floor(Math.random() * Math.min(this.bubbleColors.length, 3 + this.level))];
         const sizeData = this.bubbleSizes[Math.floor(Math.random() * this.bubbleSizes.length)];
         
+        // Determinar tipo especial da bolha (5% chance para cada tipo especial)
+        let specialType = this.specialBubbleTypes.NORMAL;
+        const specialChance = Math.random();
+        if (specialChance < 0.05) {
+            specialType = this.specialBubbleTypes.TURTLE;
+        } else if (specialChance < 0.10) {
+            specialType = this.specialBubbleTypes.BOMB;
+        }
+        
         const bubble = {
             x: Math.random() * (this.canvas.width - sizeData.radius * 2) + sizeData.radius,
             y: this.canvas.height + sizeData.radius,
@@ -179,18 +205,30 @@ class BubbleGame {
             sizeName: sizeData.name,
             wobble: Math.random() * Math.PI * 2,
             wobbleSpeed: 0.02 + Math.random() * 0.03,
-            alpha: 0.8 + Math.random() * 0.2
+            alpha: 0.8 + Math.random() * 0.2,
+            specialType: specialType
         };
         
         this.bubbles.push(bubble);
     }
     
     updateBubbles() {
+        // Verificar se o power-up de slow motion expirou
+        if (this.powerUps.slowMotion.active && Date.now() > this.powerUps.slowMotion.endTime) {
+            this.powerUps.slowMotion.active = false;
+        }
+        
         for (let i = this.bubbles.length - 1; i >= 0; i--) {
             const bubble = this.bubbles[i];
             
+            // Aplicar efeito de slow motion se ativo
+            let currentSpeed = bubble.speed;
+            if (this.powerUps.slowMotion.active) {
+                currentSpeed *= this.powerUps.slowMotion.speedMultiplier;
+            }
+            
             // Movimento para cima com oscilação
-            bubble.y -= bubble.speed;
+            bubble.y -= currentSpeed;
             bubble.wobble += bubble.wobbleSpeed;
             bubble.x += Math.sin(bubble.wobble) * 0.5;
             
@@ -224,6 +262,27 @@ class BubbleGame {
             const distance = Math.sqrt((x - bubble.x) ** 2 + (y - bubble.y) ** 2);
             
             if (distance <= bubble.radius) {
+                // Verificar se é uma bolha especial e aplicar efeitos
+                if (bubble.specialType === this.specialBubbleTypes.TURTLE) {
+                    // Ativar slow motion
+                    this.powerUps.slowMotion.active = true;
+                    this.powerUps.slowMotion.endTime = Date.now() + this.powerUps.slowMotion.duration;
+                    
+                    // Efeito sonoro especial para tartaruga
+                    this.playSound(300, 0.3, 'sine');
+                    setTimeout(() => this.playSound(250, 0.4, 'sine'), 150);
+                    setTimeout(() => this.playSound(200, 0.5, 'sine'), 300);
+                } else if (bubble.specialType === this.specialBubbleTypes.BOMB) {
+                    // Efeito sonoro especial para bomba (antes da explosão)
+                    this.playSound(100, 0.2, 'square');
+                    
+                    // Criar efeito visual de onda de choque
+                    this.createShockwaveEffect(bubble.x, bubble.y, bubble.radius * 2.5);
+                    
+                    // Explodir bolhas vizinhas
+                    this.explodeNearbyBubbles(bubble.x, bubble.y, bubble.radius * 2.5);
+                }
+                
                 // Aplicar regras de pontuação baseadas em estratégia
                 const points = this.calculatePoints(bubble, i);
                 this.score += points;
@@ -269,6 +328,81 @@ class BubbleGame {
         points *= (1 + heightBonus * 0.3);
         
         return Math.floor(points);
+    }
+    
+    explodeNearbyBubbles(centerX, centerY, explosionRadius) {
+        const explodedBubbles = [];
+        
+        // Encontrar bolhas dentro do raio de explosão
+        for (let i = this.bubbles.length - 1; i >= 0; i--) {
+            const bubble = this.bubbles[i];
+            const distance = Math.sqrt((centerX - bubble.x) ** 2 + (centerY - bubble.y) ** 2);
+            
+            if (distance <= explosionRadius) {
+                // Adicionar pontos da bolha explodida
+                this.score += Math.floor(bubble.points * 0.8); // 80% dos pontos normais
+                
+                // Criar efeito visual
+                this.createExplosionEffect(bubble.x, bubble.y, bubble.color);
+                
+                // Armazenar dados da bolha antes de remover
+                explodedBubbles.push(bubble);
+                
+                // Remover bolha
+                this.bubbles.splice(i, 1);
+            }
+        }
+        
+        // Efeito sonoro especial para explosão em área
+        if (explodedBubbles.length > 1) {
+            this.playSound(150, 0.3, 'sawtooth'); // Som grave de explosão
+            setTimeout(() => this.playSound(800, 0.2, 'triangle'), 100); // Som agudo de finalização
+        }
+        
+        return explodedBubbles.length;
+    }
+    
+    createShockwaveEffect(x, y, maxRadius) {
+        const shockwave = {
+            x: x,
+            y: y,
+            radius: 0,
+            maxRadius: maxRadius,
+            alpha: 1,
+            startTime: Date.now()
+        };
+        
+        const animateShockwave = () => {
+            const elapsed = Date.now() - shockwave.startTime;
+            const duration = 500; // 500ms de duração
+            const progress = Math.min(elapsed / duration, 1);
+            
+            shockwave.radius = shockwave.maxRadius * progress;
+            shockwave.alpha = 1 - progress;
+            
+            // Desenhar onda de choque
+            this.ctx.save();
+            this.ctx.globalAlpha = shockwave.alpha;
+            this.ctx.strokeStyle = '#FF4500';
+            this.ctx.lineWidth = 4;
+            this.ctx.beginPath();
+            this.ctx.arc(shockwave.x, shockwave.y, shockwave.radius, 0, Math.PI * 2);
+            this.ctx.stroke();
+            
+            // Anel interno
+            this.ctx.strokeStyle = '#FFD700';
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+            this.ctx.arc(shockwave.x, shockwave.y, shockwave.radius * 0.7, 0, Math.PI * 2);
+            this.ctx.stroke();
+            this.ctx.restore();
+            
+            if (progress < 1) {
+                requestAnimationFrame(animateShockwave);
+            }
+        };
+        
+        animateShockwave();
     }
     
     createExplosionEffect(x, y, color) {
@@ -399,8 +533,109 @@ class BubbleGame {
             this.ctx.arc(bubble.x - bubble.radius * 0.3, bubble.y - bubble.radius * 0.3, bubble.radius * 0.4, 0, Math.PI * 2);
             this.ctx.fill();
             
+            // Desenhar ícones especiais
+            if (bubble.specialType === this.specialBubbleTypes.TURTLE) {
+                this.drawTurtleIcon(bubble.x, bubble.y, bubble.radius * 0.4);
+            } else if (bubble.specialType === this.specialBubbleTypes.BOMB) {
+                this.drawBombIcon(bubble.x, bubble.y, bubble.radius * 0.4);
+            }
+            
             this.ctx.restore();
         });
+        
+        // Indicador visual de slow motion
+        if (this.powerUps.slowMotion.active) {
+            const timeLeft = this.powerUps.slowMotion.endTime - Date.now();
+            const progress = timeLeft / this.powerUps.slowMotion.duration;
+            
+            // Fundo do indicador
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            this.ctx.fillRect(10, 10, 200, 30);
+            
+            // Barra de progresso
+            this.ctx.fillStyle = '#4ECDC4';
+            this.ctx.fillRect(15, 15, 190 * progress, 20);
+            
+            // Texto
+            this.ctx.fillStyle = 'white';
+            this.ctx.font = '14px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText('🐢 SLOW MOTION', 110, 28);
+            this.ctx.textAlign = 'left';
+        }
+    }
+    
+    drawTurtleIcon(x, y, size) {
+        this.ctx.save();
+        this.ctx.fillStyle = '#2D5016'; // Verde escuro
+        
+        // Corpo da tartaruga (oval)
+        this.ctx.beginPath();
+        this.ctx.ellipse(x, y, size * 0.8, size * 0.6, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Cabeça
+        this.ctx.beginPath();
+        this.ctx.arc(x, y - size * 0.4, size * 0.3, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Patas
+        this.ctx.beginPath();
+        this.ctx.arc(x - size * 0.5, y + size * 0.3, size * 0.15, 0, Math.PI * 2);
+        this.ctx.arc(x + size * 0.5, y + size * 0.3, size * 0.15, 0, Math.PI * 2);
+        this.ctx.arc(x - size * 0.3, y - size * 0.1, size * 0.12, 0, Math.PI * 2);
+        this.ctx.arc(x + size * 0.3, y - size * 0.1, size * 0.12, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Casco (linhas)
+        this.ctx.strokeStyle = '#1A3009';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x - size * 0.4, y - size * 0.2);
+        this.ctx.lineTo(x + size * 0.4, y - size * 0.2);
+        this.ctx.moveTo(x - size * 0.4, y + size * 0.2);
+        this.ctx.lineTo(x + size * 0.4, y + size * 0.2);
+        this.ctx.stroke();
+        
+        this.ctx.restore();
+    }
+    
+    drawBombIcon(x, y, size) {
+        this.ctx.save();
+        
+        // Corpo da bomba (círculo preto)
+        this.ctx.fillStyle = '#1a1a1a';
+        this.ctx.beginPath();
+        this.ctx.arc(x, y + size * 0.1, size * 0.7, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Pavio
+        this.ctx.strokeStyle = '#8B4513'; // Marrom
+        this.ctx.lineWidth = 3;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x - size * 0.2, y - size * 0.4);
+        this.ctx.lineTo(x - size * 0.4, y - size * 0.8);
+        this.ctx.stroke();
+        
+        // Chama do pavio
+        this.ctx.fillStyle = '#FF4500'; // Laranja avermelhado
+        this.ctx.beginPath();
+        this.ctx.ellipse(x - size * 0.4, y - size * 0.8, size * 0.15, size * 0.2, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Centro da chama (amarelo)
+        this.ctx.fillStyle = '#FFD700';
+        this.ctx.beginPath();
+        this.ctx.ellipse(x - size * 0.4, y - size * 0.8, size * 0.08, size * 0.12, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Brilho na bomba
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        this.ctx.beginPath();
+        this.ctx.arc(x - size * 0.2, y - size * 0.1, size * 0.2, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        this.ctx.restore();
     }
     
     darkenColor(color, factor) {
