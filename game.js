@@ -43,9 +43,12 @@ class BubbleGame {
     }
     
     init() {
-        this.resizeCanvas();
         this.setupEventListeners();
         this.createAudioContext();
+        
+        // Força redimensionamento inicial
+        this.resizeCanvas();
+        
         this.gameLoop();
         
         // Só spawn bolhas se o jogo foi iniciado
@@ -106,12 +109,39 @@ class BubbleGame {
     
     resizeCanvas() {
         const container = this.canvas.parentElement;
-        this.canvas.width = container.clientWidth;
-        this.canvas.height = container.clientHeight;
+        const newWidth = container.clientWidth;
+        const newHeight = container.clientHeight;
+        
+        // Força o redimensionamento apenas se necessário
+        if (this.canvas.width !== newWidth || this.canvas.height !== newHeight) {
+            this.canvas.width = newWidth;
+            this.canvas.height = newHeight;
+            
+            // Força uma nova renderização
+            if (this.gameRunning) {
+                this.render();
+            }
+        }
     }
     
     setupEventListeners() {
-        window.addEventListener('resize', () => this.resizeCanvas());
+        // Redimensionamento da janela
+        window.addEventListener('resize', () => {
+            this.resizeCanvas();
+        });
+        
+        // Observer para mudanças no container
+        if (window.ResizeObserver) {
+            this.resizeObserver = new ResizeObserver(() => {
+                this.resizeCanvas();
+            });
+            this.resizeObserver.observe(this.canvas.parentElement);
+        }
+        
+        // Redimensionamento inicial com delay para garantir que o DOM esteja pronto
+        setTimeout(() => {
+            this.resizeCanvas();
+        }, 100);
         
         // Touch events para dispositivos móveis
         this.canvas.addEventListener('touchstart', (e) => {
@@ -448,17 +478,24 @@ function showStartScreen() {
 }
 
 function startGame() {
+    gameStarted = true;
     document.getElementById('startScreen').style.display = 'none';
     document.getElementById('gameArea').style.display = 'block';
     
-    // Inicializar ou reiniciar o jogo
-    if (!game) {
-        game = new BubbleGame();
-    } else {
-        game.restart();
-    }
+    // Inicializar o jogo
+    game = new BubbleGame();
+    game.init();
     
-    gameStarted = true;
+    // Força redimensionamento após mostrar o container
+    setTimeout(() => {
+        game.resizeCanvas();
+    }, 50);
+    
+    // Iniciar o spawn de bolhas
+    game.gameRunning = true;
+    
+    // Primeira bolha aparece imediatamente
+    game.spawnBubble();
 }
 
 function goToHome() {
