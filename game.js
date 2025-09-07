@@ -4,6 +4,7 @@ class BubbleGame {
         this.ctx = this.canvas.getContext('2d');
         this.scoreElement = document.getElementById('score');
         this.levelElement = document.getElementById('level');
+        this.timerElement = document.getElementById('timer');
         this.gameOverElement = document.getElementById('gameOver');
         this.finalScoreElement = document.getElementById('finalScore');
         this.finalLevelElement = document.getElementById('finalLevel');
@@ -13,8 +14,8 @@ class BubbleGame {
         this.level = 1;
         this.gameRunning = true;
         this.lastBubbleSpawn = 0;
-        this.bubbleSpawnRate = 1200; // milliseconds
-        this.maxBubbles = 15;
+        this.bubbleSpawnRate = 800; // milliseconds - spawn mais frequente
+        this.maxBubbles = 12; // menos bolhas máximas para evitar travamento
         
         // Sistema de alfinetes no teto
         this.ceilingPins = [];
@@ -53,8 +54,14 @@ class BubbleGame {
         this.specialBubbleTypes = {
             NORMAL: 'normal',
             TURTLE: 'turtle',
-            BOMB: 'bomb'
+            BOMB: 'bomb',
+            CLOCK: 'clock'
         };
+        
+        // Sistema de contagem regressiva
+        this.timeLeft = 60; // segundos
+        this.gameStartTime = 0;
+        this.timerElement = null;
         
         this.init()
     }
@@ -126,13 +133,19 @@ class BubbleGame {
     
     resizeCanvas() {
         const container = this.canvas.parentElement;
-        const newWidth = container.clientWidth;
-        const newHeight = container.clientHeight;
+        const containerRect = container.getBoundingClientRect();
+        const newWidth = containerRect.width;
+        const newHeight = containerRect.height;
         
         // Força o redimensionamento apenas se necessário
         if (this.canvas.width !== newWidth || this.canvas.height !== newHeight) {
+            // Define o tamanho interno do canvas (resolução)
             this.canvas.width = newWidth;
             this.canvas.height = newHeight;
+            
+            // Define o tamanho visual do canvas (CSS)
+            this.canvas.style.width = newWidth + 'px';
+            this.canvas.style.height = newHeight + 'px';
             
             // Força uma nova renderização
             if (this.gameRunning) {
@@ -192,6 +205,8 @@ class BubbleGame {
             specialType = this.specialBubbleTypes.TURTLE;
         } else if (specialChance < 0.10) {
             specialType = this.specialBubbleTypes.BOMB;
+        } else if (specialChance < 0.15) {
+            specialType = this.specialBubbleTypes.CLOCK;
         }
         
         const bubble = {
@@ -246,10 +261,19 @@ class BubbleGame {
             }
         }
         
-        // Spawn de novas bolhas
+        // Spawn de novas bolhas - garantir fluxo constante
         const now = Date.now();
         if (now - this.lastBubbleSpawn > this.bubbleSpawnRate) {
-            this.spawnBubble();
+            // Spawn múltiplas bolhas se necessário para manter o jogo dinâmico
+            if (this.bubbles.length < this.maxBubbles * 0.6) {
+                this.spawnBubble();
+                // Spawn bolha adicional se muito poucas bolhas
+                if (this.bubbles.length < 3) {
+                    setTimeout(() => this.spawnBubble(), 200);
+                }
+            } else {
+                this.spawnBubble();
+            }
             this.lastBubbleSpawn = now;
         }
     }
@@ -276,11 +300,33 @@ class BubbleGame {
                     // Efeito sonoro especial para bomba (antes da explosão)
                     this.playSound(100, 0.2, 'square');
                     
-                    // Criar efeito visual de onda de choque
-                    this.createShockwaveEffect(bubble.x, bubble.y, bubble.radius * 2.5);
+                    // Armazenar posição e raio da bomba antes de removê-la
+                    const bombX = bubble.x;
+                    const bombY = bubble.y;
+                    const explosionRadius = bubble.radius * 2.5;
                     
-                    // Explodir bolhas vizinhas
-                    this.explodeNearbyBubbles(bubble.x, bubble.y, bubble.radius * 2.5);
+                    // Aplicar regras de pontuação da bomba
+                    const points = this.calculatePoints(bubble, i);
+                    this.score += points;
+                    
+                    // Criar efeito visual de explosão da bomba
+                    this.createExplosionEffect(bubble.x, bubble.y, bubble.color);
+                    
+                    // Remove a bolha bomba primeiro
+                    this.bubbles.splice(i, 1);
+                    
+                    // Criar efeito visual de onda de choque
+                    this.createShockwaveEffect(bombX, bombY, explosionRadius);
+                    
+                    // Explodir bolhas vizinhas (agora sem incluir a bomba)
+                    this.explodeNearbyBubbles(bombX, bombY, explosionRadius);
+                    
+                    this.updateUI();
+                    this.checkLevelUp();
+                    return; // Sair da função para evitar processamento duplicado
+                } else if (bubble.specialType === this.specialBubbleTypes.CLOCK) {
+                    // Bolha relógio: adicionar 60 segundos
+                    this.addTime(60);
                 }
                 
                 // Aplicar regras de pontuação baseadas em estratégia
@@ -450,8 +496,11 @@ class BubbleGame {
         const newLevel = Math.floor(this.score / 500) + 1;
         if (newLevel > this.level) {
             this.level = newLevel;
-            this.bubbleSpawnRate = Math.max(600, 1200 - (this.level * 100));
-            this.maxBubbles = Math.min(25, 15 + this.level);
+            this.bubbleSpawnRate = Math.max(400, 800 - (this.level * 80));
+            this.maxBubbles = Math.min(20, 12 + this.level);
+            
+            // Adicionar 60 segundos ao mudar de fase
+            this.addTime(60);
             
             // Som de level up
             this.playSound(523, 0.1); // C5
@@ -460,9 +509,36 @@ class BubbleGame {
         }
     }
     
+    updateTimer() {
+        if (this.gameStartTime === 0) {
+            this.gameStartTime = Date.now();
+        }
+        
+        const elapsed = Math.floor((Date.now() - this.gameStartTime) / 1000);
+        this.timeLeft = Math.max(0, 60 - elapsed + this.bonusTime);
+        this.updateUI();
+    }
+    
+    addTime(seconds) {
+        this.bonusTime = (this.bonusTime || 0) + seconds;
+        
+        // Efeito visual de tempo adicionado
+        this.timerElement.style.animation = 'none';
+        this.timerElement.style.background = 'rgba(100, 255, 100, 0.9)';
+        setTimeout(() => {
+            this.timerElement.style.animation = 'timerPulse 2s infinite';
+            this.timerElement.style.background = 'rgba(255, 100, 100, 0.9)';
+        }, 1000);
+        
+        // Som de bônus de tempo
+        this.playSound(880, 0.2); // A5
+        setTimeout(() => this.playSound(1047, 0.2), 100); // C6
+    }
+    
     updateUI() {
         this.scoreElement.textContent = this.score;
         this.levelElement.textContent = this.level;
+        this.timerElement.textContent = this.timeLeft;
     }
     
     render() {
@@ -538,6 +614,8 @@ class BubbleGame {
                 this.drawTurtleIcon(bubble.x, bubble.y, bubble.radius * 0.4);
             } else if (bubble.specialType === this.specialBubbleTypes.BOMB) {
                 this.drawBombIcon(bubble.x, bubble.y, bubble.radius * 0.4);
+            } else if (bubble.specialType === this.specialBubbleTypes.CLOCK) {
+                this.drawClockIcon(bubble.x, bubble.y, bubble.radius * 0.4);
             }
             
             this.ctx.restore();
@@ -638,6 +716,60 @@ class BubbleGame {
         this.ctx.restore();
     }
     
+    drawClockIcon(x, y, size) {
+        this.ctx.save();
+        
+        // Corpo do relógio (círculo branco)
+        this.ctx.fillStyle = '#FFFFFF';
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, size * 0.8, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Borda do relógio
+        this.ctx.strokeStyle = '#333333';
+        this.ctx.lineWidth = 2;
+        this.ctx.stroke();
+        
+        // Marcadores das horas (12, 3, 6, 9)
+        this.ctx.strokeStyle = '#666666';
+        this.ctx.lineWidth = 1;
+        for (let i = 0; i < 4; i++) {
+            const angle = (i * Math.PI) / 2;
+            const startX = x + Math.cos(angle) * size * 0.6;
+            const startY = y + Math.sin(angle) * size * 0.6;
+            const endX = x + Math.cos(angle) * size * 0.7;
+            const endY = y + Math.sin(angle) * size * 0.7;
+            
+            this.ctx.beginPath();
+            this.ctx.moveTo(startX, startY);
+            this.ctx.lineTo(endX, endY);
+            this.ctx.stroke();
+        }
+        
+        // Ponteiro das horas (apontando para 3)
+        this.ctx.strokeStyle = '#333333';
+        this.ctx.lineWidth = 3;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y);
+        this.ctx.lineTo(x + size * 0.4, y);
+        this.ctx.stroke();
+        
+        // Ponteiro dos minutos (apontando para 12)
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y);
+        this.ctx.lineTo(x, y - size * 0.6);
+        this.ctx.stroke();
+        
+        // Centro do relógio
+        this.ctx.fillStyle = '#333333';
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, size * 0.1, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        this.ctx.restore();
+    }
+    
     darkenColor(color, factor) {
         // Converter hex para RGB e escurecer
         const hex = color.replace('#', '');
@@ -649,11 +781,12 @@ class BubbleGame {
     
     gameLoop() {
         if (this.gameRunning) {
+            this.updateTimer();
             this.updateBubbles();
             this.render();
             
-            // Verificar condição de game over
-            if (this.bubbles.length >= this.maxBubbles && this.bubbles.some(b => b.y <= 100)) {
+            // Verificar condição de game over - agora baseado no timer
+            if (this.timeLeft <= 0) {
                 this.gameOver();
             }
         }
@@ -679,8 +812,13 @@ class BubbleGame {
         this.level = 1;
         this.gameRunning = true;
         this.lastBubbleSpawn = Date.now();
-        this.bubbleSpawnRate = 1200;
-        this.maxBubbles = 15;
+        this.bubbleSpawnRate = 800;
+        this.maxBubbles = 12;
+        
+        // Reinicializar timer
+        this.timeLeft = 60;
+        this.gameStartTime = 0;
+        this.bonusTime = 0;
         
         this.gameOverElement.style.display = 'none';
         this.updateUI();
