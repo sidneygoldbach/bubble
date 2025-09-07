@@ -2,9 +2,6 @@ class BubbleGame {
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
         this.ctx = this.canvas.getContext('2d');
-        this.scoreElement = document.getElementById('score');
-        this.levelElement = document.getElementById('level');
-        this.timerElement = document.getElementById('timer');
         this.gameOverElement = document.getElementById('gameOver');
         this.finalScoreElement = document.getElementById('finalScore');
         this.finalLevelElement = document.getElementById('finalLevel');
@@ -14,7 +11,7 @@ class BubbleGame {
         this.level = 1;
         this.gameRunning = true;
         this.lastBubbleSpawn = 0;
-        this.bubbleSpawnRate = 800; // milliseconds - spawn mais frequente
+        this.bubbleSpawnRate = 600; // milliseconds - intervalo base otimizado
         this.maxBubbles = 12; // menos bolhas máximas para evitar travamento
         
         // Sistema de alfinetes no teto
@@ -61,17 +58,25 @@ class BubbleGame {
         // Sistema de contagem regressiva
         this.timeLeft = 60; // segundos
         this.gameStartTime = 0;
-        this.timerElement = null;
+        this.bonusTime = 0;
         
         this.init()
     }
     
     init() {
+        // Inicializar elementos do DOM
+        this.scoreElement = document.getElementById('score');
+        this.levelElement = document.getElementById('level');
+        this.timerElement = document.getElementById('timer');
+        
         this.setupEventListeners();
         this.createAudioContext();
         
         // Força redimensionamento inicial
         this.resizeCanvas();
+        
+        // Inicializar UI
+        this.updateUI();
         
         this.gameLoop();
         
@@ -198,14 +203,14 @@ class BubbleGame {
         const colorData = this.bubbleColors[Math.floor(Math.random() * Math.min(this.bubbleColors.length, 3 + this.level))];
         const sizeData = this.bubbleSizes[Math.floor(Math.random() * this.bubbleSizes.length)];
         
-        // Determinar tipo especial da bolha (5% chance para cada tipo especial)
+        // Determinar tipo especial da bolha (10% chance para relógio, 5% para outros)
         let specialType = this.specialBubbleTypes.NORMAL;
         const specialChance = Math.random();
         if (specialChance < 0.05) {
             specialType = this.specialBubbleTypes.TURTLE;
         } else if (specialChance < 0.10) {
             specialType = this.specialBubbleTypes.BOMB;
-        } else if (specialChance < 0.15) {
+        } else if (specialChance < 0.20) {
             specialType = this.specialBubbleTypes.CLOCK;
         }
         
@@ -261,19 +266,41 @@ class BubbleGame {
             }
         }
         
-        // Spawn de novas bolhas - garantir fluxo constante
+        // Spawn de novas bolhas - sistema adaptativo para fluxo constante
         const now = Date.now();
-        if (now - this.lastBubbleSpawn > this.bubbleSpawnRate) {
-            // Spawn múltiplas bolhas se necessário para manter o jogo dinâmico
-            if (this.bubbles.length < this.maxBubbles * 0.6) {
-                this.spawnBubble();
-                // Spawn bolha adicional se muito poucas bolhas
-                if (this.bubbles.length < 3) {
-                    setTimeout(() => this.spawnBubble(), 200);
-                }
-            } else {
-                this.spawnBubble();
+        const timeSinceLastSpawn = now - this.lastBubbleSpawn;
+        const bubbleCount = this.bubbles.length;
+        const targetBubbles = Math.max(4, this.maxBubbles * 0.4); // Mínimo de 4 bolhas sempre
+        
+        // Calcular intervalo dinâmico baseado na densidade atual
+        let dynamicSpawnRate = this.bubbleSpawnRate;
+        if (bubbleCount < targetBubbles) {
+            // Acelerar spawn quando poucas bolhas
+            dynamicSpawnRate = Math.max(300, this.bubbleSpawnRate * 0.5);
+        } else if (bubbleCount > this.maxBubbles * 0.8) {
+            // Desacelerar spawn quando muitas bolhas
+            dynamicSpawnRate = this.bubbleSpawnRate * 1.5;
+        }
+        
+        // Spawn principal
+        if (timeSinceLastSpawn > dynamicSpawnRate) {
+            this.spawnBubble();
+            this.lastBubbleSpawn = now;
+            
+            // Spawn adicional imediato se muito poucas bolhas
+            if (bubbleCount < 2) {
+                setTimeout(() => {
+                    if (this.bubbles.length < targetBubbles) {
+                        this.spawnBubble();
+                    }
+                }, 150);
             }
+        }
+        
+        // Sistema de emergência: garantir que nunca fique sem bolhas por muito tempo
+        if (bubbleCount === 0 && timeSinceLastSpawn > 2000) {
+            // Forçar spawn se não há bolhas há mais de 2 segundos
+            this.spawnBubble();
             this.lastBubbleSpawn = now;
         }
     }
@@ -303,7 +330,7 @@ class BubbleGame {
                     // Armazenar posição e raio da bomba antes de removê-la
                     const bombX = bubble.x;
                     const bombY = bubble.y;
-                    const explosionRadius = bubble.radius * 2.5;
+                    const explosionRadius = bubble.radius * 3.5;
                     
                     // Aplicar regras de pontuação da bomba
                     const points = this.calculatePoints(bubble, i);
@@ -510,10 +537,6 @@ class BubbleGame {
     }
     
     updateTimer() {
-        if (this.gameStartTime === 0) {
-            this.gameStartTime = Date.now();
-        }
-        
         const elapsed = Math.floor((Date.now() - this.gameStartTime) / 1000);
         this.timeLeft = Math.max(0, 60 - elapsed + this.bonusTime);
         this.updateUI();
@@ -645,35 +668,93 @@ class BubbleGame {
     
     drawTurtleIcon(x, y, size) {
         this.ctx.save();
+        
+        // Casco principal (formato hexagonal)
         this.ctx.fillStyle = '#2D5016'; // Verde escuro
-        
-        // Corpo da tartaruga (oval)
         this.ctx.beginPath();
-        this.ctx.ellipse(x, y, size * 0.8, size * 0.6, 0, 0, Math.PI * 2);
+        const cascoRadius = size * 0.7;
+        for (let i = 0; i < 6; i++) {
+            const angle = (i * Math.PI) / 3;
+            const px = x + Math.cos(angle) * cascoRadius;
+            const py = y + Math.sin(angle) * cascoRadius * 0.8;
+            if (i === 0) {
+                this.ctx.moveTo(px, py);
+            } else {
+                this.ctx.lineTo(px, py);
+            }
+        }
+        this.ctx.closePath();
         this.ctx.fill();
         
-        // Cabeça
+        // Padrão do casco (hexágonos menores)
+        this.ctx.fillStyle = '#1A3009';
+        // Centro
         this.ctx.beginPath();
-        this.ctx.arc(x, y - size * 0.4, size * 0.3, 0, Math.PI * 2);
+        for (let i = 0; i < 6; i++) {
+            const angle = (i * Math.PI) / 3;
+            const px = x + Math.cos(angle) * size * 0.25;
+            const py = y + Math.sin(angle) * size * 0.2;
+            if (i === 0) {
+                this.ctx.moveTo(px, py);
+            } else {
+                this.ctx.lineTo(px, py);
+            }
+        }
+        this.ctx.closePath();
         this.ctx.fill();
         
-        // Patas
+        // Hexágonos ao redor
+        for (let j = 0; j < 6; j++) {
+            const centerAngle = (j * Math.PI) / 3;
+            const centerX = x + Math.cos(centerAngle) * size * 0.4;
+            const centerY = y + Math.sin(centerAngle) * size * 0.32;
+            
+            this.ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const angle = (i * Math.PI) / 3;
+                const px = centerX + Math.cos(angle) * size * 0.12;
+                const py = centerY + Math.sin(angle) * size * 0.1;
+                if (i === 0) {
+                    this.ctx.moveTo(px, py);
+                } else {
+                    this.ctx.lineTo(px, py);
+                }
+            }
+            this.ctx.closePath();
+            this.ctx.fill();
+        }
+        
+        // Cabeça (mais proeminente)
+        this.ctx.fillStyle = '#2D5016';
         this.ctx.beginPath();
-        this.ctx.arc(x - size * 0.5, y + size * 0.3, size * 0.15, 0, Math.PI * 2);
-        this.ctx.arc(x + size * 0.5, y + size * 0.3, size * 0.15, 0, Math.PI * 2);
-        this.ctx.arc(x - size * 0.3, y - size * 0.1, size * 0.12, 0, Math.PI * 2);
-        this.ctx.arc(x + size * 0.3, y - size * 0.1, size * 0.12, 0, Math.PI * 2);
+        this.ctx.ellipse(x, y - size * 0.9, size * 0.35, size * 0.25, 0, 0, Math.PI * 2);
         this.ctx.fill();
         
-        // Casco (linhas)
-        this.ctx.strokeStyle = '#1A3009';
-        this.ctx.lineWidth = 2;
+        // Olhos
+        this.ctx.fillStyle = '#000000';
         this.ctx.beginPath();
-        this.ctx.moveTo(x - size * 0.4, y - size * 0.2);
-        this.ctx.lineTo(x + size * 0.4, y - size * 0.2);
-        this.ctx.moveTo(x - size * 0.4, y + size * 0.2);
-        this.ctx.lineTo(x + size * 0.4, y + size * 0.2);
-        this.ctx.stroke();
+        this.ctx.arc(x - size * 0.15, y - size * 0.95, size * 0.08, 0, Math.PI * 2);
+        this.ctx.arc(x + size * 0.15, y - size * 0.95, size * 0.08, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Patas (mais realistas)
+        this.ctx.fillStyle = '#2D5016';
+        // Patas traseiras
+        this.ctx.beginPath();
+        this.ctx.ellipse(x - size * 0.6, y + size * 0.4, size * 0.2, size * 0.15, 0, 0, Math.PI * 2);
+        this.ctx.ellipse(x + size * 0.6, y + size * 0.4, size * 0.2, size * 0.15, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Patas dianteiras
+        this.ctx.beginPath();
+        this.ctx.ellipse(x - size * 0.7, y - size * 0.2, size * 0.18, size * 0.12, 0, 0, Math.PI * 2);
+        this.ctx.ellipse(x + size * 0.7, y - size * 0.2, size * 0.18, size * 0.12, 0, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Cauda pequena
+        this.ctx.beginPath();
+        this.ctx.ellipse(x, y + size * 0.8, size * 0.15, size * 0.1, 0, 0, Math.PI * 2);
+        this.ctx.fill();
         
         this.ctx.restore();
     }
@@ -812,12 +893,12 @@ class BubbleGame {
         this.level = 1;
         this.gameRunning = true;
         this.lastBubbleSpawn = Date.now();
-        this.bubbleSpawnRate = 800;
+        this.bubbleSpawnRate = 600;
         this.maxBubbles = 12;
         
         // Reinicializar timer
         this.timeLeft = 60;
-        this.gameStartTime = 0;
+        this.gameStartTime = Date.now();
         this.bonusTime = 0;
         
         this.gameOverElement.style.display = 'none';
@@ -866,6 +947,10 @@ function startGame() {
     
     // Iniciar o spawn de bolhas
     game.gameRunning = true;
+    
+    // Inicializar timer do jogo
+    game.gameStartTime = Date.now();
+    game.bonusTime = 0;
     
     // Primeira bolha aparece imediatamente
     game.spawnBubble();
