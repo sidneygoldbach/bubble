@@ -1,10 +1,57 @@
 class BubbleGame {
+    addExtendedInfoStyles() {
+        const extendedStyle = document.createElement('style');
+        extendedStyle.textContent = `
+        .extended-info {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .info-section {
+            margin-bottom: 8px;
+        }
+        
+        .info-section:last-child {
+            margin-bottom: 0;
+        }
+        
+        .info-section strong {
+            color: #ffd700;
+            font-size: 12px;
+            display: block;
+            margin-bottom: 4px;
+        }
+        
+        .info-details {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .info-details span {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            color: #fff;
+            white-space: nowrap;
+        }
+        `;
+        document.head.appendChild(extendedStyle);
+    }
+
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
         this.ctx = this.canvas.getContext('2d');
         this.gameOverElement = document.getElementById('gameOver');
         this.finalScoreElement = document.getElementById('finalScore');
         this.finalLevelElement = document.getElementById('finalLevel');
+        
+        // Adicionar estilos CSS para dados estendidos
+        this.addExtendedInfoStyles();
         
         this.bubbles = [];
         this.score = 0;
@@ -905,13 +952,102 @@ class BubbleGame {
         return `${this.playerNames[randomIndex]}${randomNumber}`;
     }
     
+    // Função para detectar tipo de dispositivo
+    getDeviceType() {
+        const userAgent = navigator.userAgent.toLowerCase();
+        if (/mobile|android|iphone|ipad|phone|tablet/.test(userAgent)) {
+            return 'mobile';
+        }
+        return 'desktop';
+    }
+
+    // Função para coletar dados estendidos do navegador
+    collectBrowserData() {
+        return {
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            deviceType: this.getDeviceType(),
+            screenResolution: `${screen.width}x${screen.height}`,
+            platform: navigator.platform || 'unknown'
+        };
+    }
+
+    // Função para obter geolocalização (opcional)
+    async getGeolocation() {
+        return new Promise((resolve) => {
+            if (!navigator.geolocation) {
+                resolve(null);
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    resolve({
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude,
+                        accuracy: position.coords.accuracy
+                    });
+                },
+                () => resolve(null), // Usuário negou ou erro
+                { timeout: 5000, enableHighAccuracy: false }
+            );
+        });
+    }
+
+    // Função para obter dados de IP e localização via API
+    async getIPLocationData() {
+        try {
+            const response = await fetch('https://ipapi.co/json/');
+            if (response.ok) {
+                const data = await response.json();
+                return {
+                    ip: data.ip,
+                    country: data.country_name,
+                    region: data.region,
+                    city: data.city,
+                    postal: data.postal,
+                    latitude: data.latitude,
+                    longitude: data.longitude,
+                    timezone: data.timezone,
+                    isp: data.org
+                };
+            }
+        } catch (error) {
+            console.warn('Erro ao obter dados de IP:', error);
+        }
+        return null;
+    }
+
     async saveScore(score, level) {
         const playerName = this.generateRandomName();
+        const browserData = this.collectBrowserData();
+        
+        // Coletar dados estendidos de forma assíncrona
+        const [geolocation, ipLocationData] = await Promise.all([
+            this.getGeolocation(),
+            this.getIPLocationData()
+        ]);
+        
         const gameData = {
             name: playerName,
             score: score,
             level: level,
-            date: new Date().toISOString()
+            date: new Date().toISOString(),
+            // Dados estendidos do navegador
+            browser: {
+                userAgent: browserData.userAgent,
+                language: browserData.language,
+                timezone: browserData.timezone,
+                deviceType: browserData.deviceType,
+                screenResolution: browserData.screenResolution,
+                platform: browserData.platform
+            },
+            // Dados de localização (se disponíveis)
+            location: {
+                geolocation: geolocation,
+                ipLocation: ipLocationData
+            }
         };
         
         try {
@@ -974,6 +1110,99 @@ class BubbleGame {
         console.log('Pontuação salva localmente como fallback');
     }
     
+    // Função para verificar parâmetros da URL
+    getURLParameter(name) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(name);
+    }
+
+    // Função para verificar se deve mostrar informações completas
+    shouldShowAllInfo() {
+        return this.getURLParameter('ranking') === 'allinfo';
+    }
+
+    displayRanking(ranking, container) {
+        if (ranking.length === 0) {
+            container.innerHTML = '<div class="no-scores">Nenhuma pontuação registrada ainda.</div>';
+            return;
+        }
+
+        const showAllInfo = this.shouldShowAllInfo();
+        let html = `<div class="ranking-header">🏆 Top Jogadores ${showAllInfo ? '(Dados Completos)' : ''}</div>`;
+        
+        ranking.forEach((score, index) => {
+            const position = index + 1;
+            const medal = position <= 3 ? ['🥇', '🥈', '🥉'][position - 1] : `${position}º`;
+            const date = new Date(score.date).toLocaleDateString('pt-BR');
+            
+            html += `
+                <div class="ranking-item ${position <= 3 ? 'top-three' : ''}">
+                    <div class="ranking-position">${medal}</div>
+                    <div class="ranking-info">
+                        <div class="ranking-name">${score.name}</div>
+                        <div class="ranking-details">
+                            <span class="score">Pontos: ${score.score.toLocaleString()}</span>
+                            <span class="level">Nível: ${score.level}</span>
+                            <span class="date">${date}</span>
+                        </div>`;
+            
+            // Mostrar dados estendidos se parâmetro estiver presente
+            if (showAllInfo && score.browser) {
+                html += `
+                        <div class="extended-info">
+                            <div class="info-section">
+                                <strong>Navegador:</strong>
+                                <div class="info-details">
+                                    <span>Dispositivo: ${score.browser.deviceType || 'N/A'}</span>
+                                    <span>Idioma: ${score.browser.language || 'N/A'}</span>
+                                    <span>Timezone: ${score.browser.timezone || 'N/A'}</span>
+                                    <span>Resolução: ${score.browser.screenResolution || 'N/A'}</span>
+                                    <span>Plataforma: ${score.browser.platform || 'N/A'}</span>
+                                </div>
+                            </div>`;
+                
+                if (score.location) {
+                    if (score.location.ipLocation) {
+                        const loc = score.location.ipLocation;
+                        html += `
+                            <div class="info-section">
+                                <strong>Localização (IP):</strong>
+                                <div class="info-details">
+                                    <span>País: ${loc.country || 'N/A'}</span>
+                                    <span>Região: ${loc.region || 'N/A'}</span>
+                                    <span>Cidade: ${loc.city || 'N/A'}</span>
+                                    <span>IP: ${loc.ip || 'N/A'}</span>
+                                    <span>ISP: ${loc.isp || 'N/A'}</span>
+                                </div>
+                            </div>`;
+                    }
+                    
+                    if (score.location.geolocation) {
+                        const geo = score.location.geolocation;
+                        html += `
+                            <div class="info-section">
+                                <strong>Geolocalização:</strong>
+                                <div class="info-details">
+                                    <span>Lat: ${geo.latitude?.toFixed(4) || 'N/A'}</span>
+                                    <span>Lng: ${geo.longitude?.toFixed(4) || 'N/A'}</span>
+                                    <span>Precisão: ${geo.accuracy ? geo.accuracy + 'm' : 'N/A'}</span>
+                                </div>
+                            </div>`;
+                    }
+                }
+                
+                html += `</div>`;
+            }
+            
+            html += `
+                    </div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+    }
+
     async getRanking(limit = null) {
         const ranking = await this.loadRanking();
         return limit ? ranking.slice(0, limit) : ranking;
