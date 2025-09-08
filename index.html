@@ -195,6 +195,25 @@
             transform: translateY(-3px);
             box-shadow: 0 12px 35px rgba(0, 0, 0, 0.3);
         }
+        
+        .ranking-btn {
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 10px 0;
+            transition: all 0.3s;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        .ranking-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+        }
 
         .instructions {
             margin-top: 30px;
@@ -304,6 +323,114 @@
                 margin: 20px auto;
             }
         }
+        
+        /* Modal do Ranking */
+        .ranking-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .ranking-content {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(240, 240, 240, 0.95) 100%);
+            padding: 30px;
+            border-radius: 20px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        .ranking-header {
+            text-align: center;
+            margin-bottom: 25px;
+            color: #333;
+        }
+        
+        .ranking-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .ranking-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            margin: 10px 0;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 15px;
+            border-left: 5px solid #667eea;
+            transition: transform 0.2s;
+        }
+        
+        .ranking-item:hover {
+            transform: translateX(5px);
+        }
+        
+        .ranking-item:nth-child(1) { border-left-color: #FFD700; }
+        .ranking-item:nth-child(2) { border-left-color: #C0C0C0; }
+        .ranking-item:nth-child(3) { border-left-color: #CD7F32; }
+        
+        .ranking-position {
+            font-weight: bold;
+            font-size: 1.2em;
+            color: #667eea;
+            min-width: 30px;
+        }
+        
+        .ranking-info {
+            flex-grow: 1;
+            margin: 0 15px;
+        }
+        
+        .ranking-name {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .ranking-level {
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .ranking-score {
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #667eea;
+        }
+        
+        .close-ranking {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 20px;
+            width: 100%;
+            transition: transform 0.2s;
+        }
+        
+        .close-ranking:hover {
+            transform: scale(1.05);
+        }
+        
+        .no-scores {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 30px;
+        }
     </style>
 </head>
 <body>
@@ -320,6 +447,7 @@
                     <div class="feature">🏆 Pontuação estratégica</div>
                 </div>
                 <button class="start-btn" onclick="startGame()">🚀 Começar Jogo</button>
+                <button class="ranking-btn" onclick="showRanking()">🏆 Ver Ranking</button>
                 <div class="instructions">
                     <h3>Como Jogar:</h3>
                     <p>• Toque nas bolhas para estourá-las</p>
@@ -354,6 +482,19 @@
                 <button class="restart-btn" onclick="restartGame()">Jogar Novamente</button>
                 <button class="home-btn-game-over" onclick="goToHome()">Voltar ao Menu</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Modal do Ranking -->
+    <div class="ranking-modal" id="rankingModal">
+        <div class="ranking-content">
+            <div class="ranking-header">
+                <h2>🏆 Ranking de Pontuações</h2>
+            </div>
+            <ul class="ranking-list" id="rankingList">
+                <!-- Lista será preenchida dinamicamente -->
+            </ul>
+            <button class="close-ranking" onclick="closeRanking()">Fechar</button>
         </div>
     </div>
 

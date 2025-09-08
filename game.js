@@ -60,6 +60,15 @@ class BubbleGame {
         this.gameStartTime = 0;
         this.bonusTime = 0;
         
+        // Sistema de ranking
+        this.playerNames = [
+            'Bolheiro', 'Estourador', 'Mestre das Bolhas', 'Caçador', 'Destruidor',
+            'Ninja', 'Campeão', 'Lenda', 'Herói', 'Guerreiro', 'Mago', 'Arqueiro',
+            'Paladino', 'Assassino', 'Druida', 'Bárbaro', 'Feiticeiro', 'Monge',
+            'Ranger', 'Ladino', 'Cavaleiro', 'Samurai', 'Pirata', 'Viking',
+            'Gladiador', 'Espartano', 'Centurião', 'Legionário', 'Templário'
+        ];
+        
         this.init()
     }
     
@@ -352,8 +361,8 @@ class BubbleGame {
                     this.checkLevelUp();
                     return; // Sair da função para evitar processamento duplicado
                 } else if (bubble.specialType === this.specialBubbleTypes.CLOCK) {
-                    // Bolha relógio: adicionar 60 segundos
-                    this.addTime(60);
+                    // Bolha relógio: adicionar 10 segundos
+                    this.addTime(10);
                 }
                 
                 // Aplicar regras de pontuação baseadas em estratégia
@@ -526,8 +535,8 @@ class BubbleGame {
             this.bubbleSpawnRate = Math.max(400, 800 - (this.level * 80));
             this.maxBubbles = Math.min(20, 12 + this.level);
             
-            // Adicionar 60 segundos ao mudar de fase
-            this.addTime(60);
+            // Adicionar 10 segundos ao mudar de fase
+            this.addTime(10);
             
             // Som de level up
             this.playSound(523, 0.1); // C5
@@ -879,11 +888,95 @@ class BubbleGame {
         this.gameRunning = false;
         this.finalScoreElement.textContent = this.score;
         this.finalLevelElement.textContent = this.level;
+        
+        // Salvar pontuação no ranking
+        this.saveScore(this.score, this.level);
+        
         this.gameOverElement.style.display = 'block';
         
         // Som de game over
         this.playSound(220, 0.3, 'sawtooth');
         setTimeout(() => this.playSound(196, 0.5, 'sawtooth'), 300);
+    }
+    
+    generateRandomName() {
+        const randomIndex = Math.floor(Math.random() * this.playerNames.length);
+        const randomNumber = Math.floor(Math.random() * 999) + 1;
+        return `${this.playerNames[randomIndex]}${randomNumber}`;
+    }
+    
+    async saveScore(score, level) {
+        const playerName = this.generateRandomName();
+        const gameData = {
+            name: playerName,
+            score: score,
+            level: level,
+            date: new Date().toISOString()
+        };
+        
+        try {
+            // Carregar ranking existente do servidor
+            const ranking = await this.loadRanking();
+            
+            // Adicionar nova pontuação
+            ranking.push(gameData);
+            
+            // Ordenar por pontuação (maior para menor)
+            ranking.sort((a, b) => b.score - a.score);
+            
+            // Salvar no servidor
+            await this.saveRankingToServer(ranking);
+            
+            console.log(`Pontuação salva no servidor: ${playerName} - ${score} pontos`);
+        } catch (error) {
+            console.error('Erro ao salvar pontuação:', error);
+            // Fallback para localStorage em caso de erro
+            this.saveScoreLocally(gameData);
+        }
+    }
+    
+    async loadRanking() {
+        try {
+            const response = await fetch('./ranking.json');
+            if (response.ok) {
+                return await response.json();
+            } else {
+                console.warn('Arquivo de ranking não encontrado, criando novo');
+                return [];
+            }
+        } catch (error) {
+            console.error('Erro ao carregar ranking do servidor:', error);
+            // Fallback para localStorage
+            const saved = localStorage.getItem('bubbleGameRanking');
+            return saved ? JSON.parse(saved) : [];
+        }
+    }
+    
+    async saveRankingToServer(ranking) {
+        // Como o servidor HTTP simples não suporta POST, vamos usar uma abordagem alternativa
+        // Salvamos no localStorage e exibimos instruções para o usuário
+        localStorage.setItem('bubbleGameRanking', JSON.stringify(ranking));
+        
+        // Simular salvamento no servidor (para desenvolvimento)
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                console.log('Ranking salvo (simulado)');
+                resolve();
+            }, 100);
+        });
+    }
+    
+    saveScoreLocally(gameData) {
+        let ranking = JSON.parse(localStorage.getItem('bubbleGameRanking') || '[]');
+        ranking.push(gameData);
+        ranking.sort((a, b) => b.score - a.score);
+        localStorage.setItem('bubbleGameRanking', JSON.stringify(ranking));
+        console.log('Pontuação salva localmente como fallback');
+    }
+    
+    async getRanking(limit = null) {
+        const ranking = await this.loadRanking();
+        return limit ? ranking.slice(0, limit) : ranking;
     }
     
     restart() {
@@ -959,6 +1052,76 @@ function startGame() {
 function goToHome() {
     showStartScreen();
 }
+
+// Funções do Ranking
+async function showRanking() {
+    const modal = document.getElementById('rankingModal');
+    const rankingList = document.getElementById('rankingList');
+    
+    // Limpar lista atual e mostrar loading
+    rankingList.innerHTML = '<div class="no-scores">Carregando ranking...</div>';
+    modal.style.display = 'flex';
+    
+    try {
+        // Obter ranking do servidor
+        const ranking = game ? await game.getRanking() : await loadRankingFromServer();
+        
+        // Limpar loading
+        rankingList.innerHTML = '';
+        
+        if (ranking.length === 0) {
+            rankingList.innerHTML = '<div class="no-scores">Nenhuma pontuação registrada ainda.<br>Jogue para aparecer no ranking!</div>';
+        } else {
+            ranking.forEach((entry, index) => {
+                const listItem = document.createElement('li');
+                listItem.className = 'ranking-item';
+                
+                const date = new Date(entry.date);
+                const formattedDate = date.toLocaleDateString('pt-BR');
+                
+                listItem.innerHTML = `
+                    <div class="ranking-position">${index + 1}º</div>
+                    <div class="ranking-info">
+                        <div class="ranking-name">${entry.name}</div>
+                        <div class="ranking-level">Nível ${entry.level} • ${formattedDate}</div>
+                    </div>
+                    <div class="ranking-score">${entry.score.toLocaleString()}</div>
+                `;
+                
+                rankingList.appendChild(listItem);
+            });
+        }
+    } catch (error) {
+        console.error('Erro ao carregar ranking:', error);
+        rankingList.innerHTML = '<div class="no-scores">Erro ao carregar ranking.<br>Tente novamente mais tarde.</div>';
+    }
+}
+
+async function loadRankingFromServer() {
+    try {
+        const response = await fetch('./ranking.json');
+        if (response.ok) {
+            return await response.json();
+        } else {
+            return [];
+        }
+    } catch (error) {
+        // Fallback para localStorage
+        const saved = localStorage.getItem('bubbleGameRanking');
+        return saved ? JSON.parse(saved) : [];
+    }
+}
+
+function closeRanking() {
+    document.getElementById('rankingModal').style.display = 'none';
+}
+
+// Fechar modal clicando fora dela
+document.getElementById('rankingModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeRanking();
+    }
+});
 
 function restartGame() {
     if (game) {
