@@ -1205,7 +1205,19 @@ class BubbleGame {
 
     async getRanking(limit = null) {
         const ranking = await this.loadRanking();
-        return limit ? ranking.slice(0, limit) : ranking;
+        
+        // Se não foi especificado um limite, usar o padrão de 30 ou o parâmetro da URL
+        if (limit === null) {
+            const rankingSizeParam = this.getURLParameter('rankingSize');
+            limit = rankingSizeParam ? parseInt(rankingSizeParam, 10) : 30;
+            
+            // Validar o limite para evitar valores inválidos
+            if (isNaN(limit) || limit <= 0) {
+                limit = 30;
+            }
+        }
+        
+        return ranking.slice(0, limit);
     }
     
     restart() {
@@ -1326,18 +1338,50 @@ async function showRanking() {
     }
 }
 
+// Função auxiliar para obter parâmetros da URL
+function getURLParameter(name) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(name);
+}
+
 async function loadRankingFromServer() {
     try {
         const response = await fetch('./ranking.json');
+        let ranking = [];
+        
         if (response.ok) {
-            return await response.json();
+            ranking = await response.json();
         } else {
-            return [];
+            // Fallback para localStorage
+            const saved = localStorage.getItem('bubbleGameRanking');
+            ranking = saved ? JSON.parse(saved) : [];
         }
+        
+        // Aplicar limite baseado no parâmetro rankingSize
+        const rankingSizeParam = getURLParameter('rankingSize');
+        let limit = rankingSizeParam ? parseInt(rankingSizeParam, 10) : 30;
+        
+        // Validar o limite para evitar valores inválidos
+        if (isNaN(limit) || limit <= 0) {
+            limit = 30;
+        }
+        
+        return ranking.slice(0, limit);
+        
     } catch (error) {
         // Fallback para localStorage
         const saved = localStorage.getItem('bubbleGameRanking');
-        return saved ? JSON.parse(saved) : [];
+        const ranking = saved ? JSON.parse(saved) : [];
+        
+        // Aplicar limite mesmo no fallback
+        const rankingSizeParam = getURLParameter('rankingSize');
+        let limit = rankingSizeParam ? parseInt(rankingSizeParam, 10) : 30;
+        
+        if (isNaN(limit) || limit <= 0) {
+            limit = 30;
+        }
+        
+        return ranking.slice(0, limit);
     }
 }
 
